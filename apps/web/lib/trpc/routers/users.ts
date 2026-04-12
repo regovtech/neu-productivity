@@ -7,9 +7,8 @@ export const usersRouter = router({
   /** Return current user profile */
   me: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session.user.id;
-    const [user] = await ctx.db<
-      { id: string; email: string; display_name: string | null; avatar_url: string | null; created_at: Date }[]
-    >`
+    type UserRow = { id: string; email: string; display_name: string | null; avatar_url: string | null; created_at: Date };
+    const [user] = await ctx.db<UserRow[]>`
       SELECT id, email, display_name, avatar_url, created_at
       FROM users
       WHERE id = ${userId} AND deleted_at IS NULL

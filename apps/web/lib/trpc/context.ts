@@ -5,12 +5,13 @@ import type { FetchCreateContextFnOptions } from "@trpc/server/adapters/fetch";
 
 export async function createTRPCContext(opts: FetchCreateContextFnOptions) {
   const session = await auth();
+  const userId = session?.user?.id;
   return {
     session,
     db: sql,
-    withUserContext: session?.user?.id
+    withUserContext: userId
       ? <T>(fn: Parameters<typeof withUserContext>[1]) =>
-          withUserContext(session.user.id, fn)
+          withUserContext(userId, fn)
       : null,
   };
 }

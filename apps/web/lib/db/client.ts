@@ -27,10 +27,10 @@ export const sql: postgres.Sql =
  */
 export async function withUserContext<T>(
   userId: string,
-  fn: (sql: postgres.Sql) => Promise<T>
+  fn: (sql: postgres.TransactionSql) => Promise<T>
 ): Promise<T> {
   return sql.begin(async (tx) => {
     await tx`SELECT set_config('app.current_user_id', ${userId}, true)`;
     return fn(tx);
-  });
+  }) as Promise<T>;
 }
