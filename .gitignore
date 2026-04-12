@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Next.js
+.next/
+out/
+
+# Environment (NEVER commit)
+.env
+.env.local
+.env.*.local
+
+# Build
+dist/
+build/
+
+# Test
+coverage/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Vercel
+.vercel
