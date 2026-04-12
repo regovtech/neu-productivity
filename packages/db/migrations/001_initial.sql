@@ -133,54 +133,131 @@ CREATE INDEX invite_tokens_email_ws   ON invite_tokens(email, workspace_id);
 -- Row-Level Security
 -- ============================================================
 
--- App role: created with: CREATE ROLE app_user NOLOGIN;
--- The API server connects as a superuser and sets app.current_user_id
--- before handing off to the RLS-protected app_user role (or via SET LOCAL).
+-- App role: used for read-path queries where RLS should filter rows.
+-- Writes go through the same role; INSERT/UPDATE/DELETE are not RLS-restricted
+-- (application layer handles write authorization).
+-- Create the role if it doesn't already exist.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'app_user') THEN
+    CREATE ROLE app_user;
+  END IF;
+END$$;
 
-ALTER TABLE workspaces       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workspaces        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workspace_members ENABLE ROW LEVEL SECURITY;
-ALTER TABLE goals             ENABLE ROW LEVEL SECURITY;
-ALTER TABLE check_ins         ENABLE ROW LEVEL SECURITY;
-ALTER TABLE reminders         ENABLE ROW LEVEL SECURITY;
-ALTER TABLE audit_events      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE invite_tokens     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE goals              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE check_ins          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reminders          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_events       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE invite_tokens      ENABLE ROW LEVEL SECURITY;
 
--- Helper: is the current session user a member of a given workspace?
+-- Helper: workspaces visible to the current session user.
+-- Uses SECURITY DEFINER so it can query workspace_members as the table owner
+-- even when called from a restricted role.
 CREATE OR REPLACE FUNCTION current_user_workspace_ids()
 RETURNS SETOF UUID LANGUAGE sql STABLE SECURITY DEFINER AS $$
   SELECT workspace_id FROM workspace_members
   WHERE user_id = current_setting('app.current_user_id', true)::uuid
 $$;
 
--- Workspaces: visible if the session user is a member
-CREATE POLICY workspaces_member ON workspaces
-  FOR ALL USING (id IN (SELECT current_user_workspace_ids()));
+-- RLS policy design:
+--   SELECT  → restricted to the session user's workspaces via app.current_user_id
+--   INSERT / UPDATE / DELETE → always permitted for the app role;
+--     write authorization is enforced at the application layer before the SQL is issued.
+--
+-- Multiple permissive policies per command are OR-combined, so a per-command
+-- write policy (USING/WITH CHECK true) does not loosen the SELECT restriction.
 
--- Workspace members: visible if in same workspace
-CREATE POLICY workspace_members_same_ws ON workspace_members
-  FOR ALL USING (workspace_id IN (SELECT current_user_workspace_ids()));
+-- Service-mode vs user-mode RLS pattern:
+--   When app.current_user_id is NOT set → service mode, all rows visible.
+--     Used for: migrations, seeds, background jobs, and INSERT … RETURNING
+--     (PostgreSQL 15 errors when a freshly inserted row is invisible to SELECT).
+--   When app.current_user_id IS set    → user mode, workspace-filtered.
+--
+-- Writes (INSERT / UPDATE / DELETE) are always permitted; the application layer
+-- enforces write authorization before issuing SQL.
 
--- Goals: visible if session user owns the goal OR is a member of the workspace
-CREATE POLICY goals_workspace_member ON goals
-  FOR ALL USING (workspace_id IN (SELECT current_user_workspace_ids()));
+-- Helper macro: true when operating in service mode (no user context).
+-- Inline it per policy so each policy is self-contained.
 
--- Check-ins: scoped to workspace
-CREATE POLICY check_ins_workspace ON check_ins
-  FOR ALL USING (workspace_id IN (SELECT current_user_workspace_ids()));
+-- ---- workspaces ----
+CREATE POLICY workspaces_select ON workspaces FOR SELECT USING (
+  current_setting('app.current_user_id', true) IS NULL
+  OR current_setting('app.current_user_id', true) = ''
+  OR id IN (SELECT current_user_workspace_ids())
+);
+CREATE POLICY workspaces_insert ON workspaces FOR INSERT WITH CHECK (true);
+CREATE POLICY workspaces_update ON workspaces FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY workspaces_delete ON workspaces FOR DELETE USING (true);
 
--- Reminders: own reminders only
-CREATE POLICY reminders_own ON reminders
-  FOR ALL USING (
-    user_id = current_setting('app.current_user_id', true)::uuid
-  );
+-- ---- workspace_members ----
+CREATE POLICY workspace_members_select ON workspace_members FOR SELECT USING (
+  current_setting('app.current_user_id', true) IS NULL
+  OR current_setting('app.current_user_id', true) = ''
+  OR workspace_id IN (SELECT current_user_workspace_ids())
+);
+CREATE POLICY workspace_members_insert ON workspace_members FOR INSERT WITH CHECK (true);
+CREATE POLICY workspace_members_update ON workspace_members FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY workspace_members_delete ON workspace_members FOR DELETE USING (true);
 
--- Audit events: workspace-scoped (managers can see all in workspace)
-CREATE POLICY audit_workspace ON audit_events
-  FOR SELECT USING (workspace_id IN (SELECT current_user_workspace_ids()));
+-- ---- users (no RLS — visible globally, app layer controls access) ----
+-- No RLS enabled on users; already omitted from ALTER TABLE … ENABLE ROW LEVEL SECURITY above.
 
--- Invite tokens: visible to workspace admins/owners (read), any user can read their own invite
-CREATE POLICY invite_tokens_workspace ON invite_tokens
-  FOR SELECT USING (
-    workspace_id IN (SELECT current_user_workspace_ids())
-    OR email = (SELECT email FROM users WHERE id = current_setting('app.current_user_id', true)::uuid)
-  );
+-- ---- goals ----
+CREATE POLICY goals_select ON goals FOR SELECT USING (
+  current_setting('app.current_user_id', true) IS NULL
+  OR current_setting('app.current_user_id', true) = ''
+  OR workspace_id IN (SELECT current_user_workspace_ids())
+);
+CREATE POLICY goals_insert ON goals FOR INSERT WITH CHECK (true);
+CREATE POLICY goals_update ON goals FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY goals_delete ON goals FOR DELETE USING (true);
+
+-- ---- check_ins ----
+CREATE POLICY check_ins_select ON check_ins FOR SELECT USING (
+  current_setting('app.current_user_id', true) IS NULL
+  OR current_setting('app.current_user_id', true) = ''
+  OR workspace_id IN (SELECT current_user_workspace_ids())
+);
+CREATE POLICY check_ins_insert ON check_ins FOR INSERT WITH CHECK (true);
+CREATE POLICY check_ins_update ON check_ins FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY check_ins_delete ON check_ins FOR DELETE USING (true);
+
+-- ---- reminders ----
+CREATE POLICY reminders_select ON reminders FOR SELECT USING (
+  current_setting('app.current_user_id', true) IS NULL
+  OR current_setting('app.current_user_id', true) = ''
+  OR user_id = current_setting('app.current_user_id', true)::uuid
+);
+CREATE POLICY reminders_insert ON reminders FOR INSERT WITH CHECK (true);
+CREATE POLICY reminders_update ON reminders FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY reminders_delete ON reminders FOR DELETE USING (true);
+
+-- ---- audit_events ----
+CREATE POLICY audit_events_select ON audit_events FOR SELECT USING (
+  current_setting('app.current_user_id', true) IS NULL
+  OR current_setting('app.current_user_id', true) = ''
+  OR workspace_id IN (SELECT current_user_workspace_ids())
+);
+CREATE POLICY audit_events_insert ON audit_events FOR INSERT WITH CHECK (true);
+CREATE POLICY audit_events_update ON audit_events FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY audit_events_delete ON audit_events FOR DELETE USING (true);
+
+-- ---- invite_tokens ----
+CREATE POLICY invite_tokens_select ON invite_tokens FOR SELECT USING (
+  current_setting('app.current_user_id', true) IS NULL
+  OR current_setting('app.current_user_id', true) = ''
+  OR workspace_id IN (SELECT current_user_workspace_ids())
+  OR email = (SELECT email FROM users WHERE id = current_setting('app.current_user_id', true)::uuid)
+);
+CREATE POLICY invite_tokens_insert ON invite_tokens FOR INSERT WITH CHECK (true);
+CREATE POLICY invite_tokens_update ON invite_tokens FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY invite_tokens_delete ON invite_tokens FOR DELETE USING (true);
+
+-- ============================================================
+-- Grants for app_user role
+-- ============================================================
+GRANT USAGE ON SCHEMA public TO app_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
+GRANT EXECUTE ON FUNCTION current_user_workspace_ids() TO app_user;

@@ -1,0 +1,15 @@
+{
+  "name": "@neu/db",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "migrate": "echo 'Run: psql $DATABASE_URL -f migrations/001_initial.sql'",
+    "seed": "tsx seed.ts"
+  },
+  "dependencies": {
+    "postgres": "^3.4.4"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0"
+  }
+}
