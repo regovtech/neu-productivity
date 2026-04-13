@@ -65,3 +65,20 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Build (required for E2E)
+        run: pnpm --filter web build
+
+      - name: Install Playwright browsers
+        run: pnpm --filter web exec playwright install --with-deps chromium
+
+      - name: E2E smoke tests
+        run: pnpm --filter web test:e2e
+
+      - name: Upload E2E artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: apps/web/e2e-results/
+          retention-days: 7

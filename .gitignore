@@ -24,3 +24,7 @@ Thumbs.db
 
 # Vercel
 .vercel
+
+# Playwright
+apps/web/e2e-results/
+apps/web/playwright-report/
