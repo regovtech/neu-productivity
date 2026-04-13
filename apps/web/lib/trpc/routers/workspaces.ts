@@ -157,4 +157,59 @@ export const workspacesRouter = router({
         ORDER BY wm.joined_at ASC
       `);
     }),
+
+  // -------------------------------------------------------------------------
+  // Digest settings
+  // -------------------------------------------------------------------------
+
+  /** Get weekly digest settings for a workspace (managers only) */
+  digestSettings: protectedProcedure
+    .input(z.object({ workspaceId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+
+      const [row] = await ctx.db<
+        { id: string; digest_enabled: boolean; digest_hour: number; role: string }[]
+      >`
+        SELECT w.id, w.digest_enabled, w.digest_hour, wm.role
+        FROM workspaces w
+        JOIN workspace_members wm
+          ON wm.workspace_id = w.id AND wm.user_id = ${userId}
+        WHERE w.id = ${input.workspaceId}
+          AND wm.role IN ('owner', 'admin', 'manager')
+      `;
+      if (!row) throw new TRPCError({ code: "NOT_FOUND" });
+
+      return { digestEnabled: row.digest_enabled, digestHour: row.digest_hour };
+    }),
+
+  /** Update weekly digest settings for a workspace (managers only) */
+  updateDigestSettings: protectedProcedure
+    .input(
+      z.object({
+        workspaceId: z.string().uuid(),
+        digestEnabled: z.boolean(),
+        digestHour: z.number().int().min(0).max(23),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+
+      const [membership] = await ctx.db<{ role: string }[]>`
+        SELECT role FROM workspace_members
+        WHERE workspace_id = ${input.workspaceId}
+          AND user_id = ${userId}
+          AND role IN ('owner', 'admin', 'manager')
+      `;
+      if (!membership) throw new TRPCError({ code: "FORBIDDEN" });
+
+      await ctx.db`
+        UPDATE workspaces
+        SET digest_enabled = ${input.digestEnabled},
+            digest_hour    = ${input.digestHour}
+        WHERE id = ${input.workspaceId}
+      `;
+
+      return { ok: true };
+    }),
 });

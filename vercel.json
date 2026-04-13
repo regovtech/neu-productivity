@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/gdpr-hard-delete",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/send-digest",
+      "schedule": "0 * * * 1"
     }
   ]
 }
