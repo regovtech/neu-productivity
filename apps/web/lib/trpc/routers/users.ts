@@ -2,6 +2,7 @@ import { protectedProcedure, publicProcedure, router } from "@/lib/trpc/init";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { hashPassword } from "@/lib/auth/password";
+import { writeAuditEvent, AuditEvent } from "@/lib/audit";
 
 export const usersRouter = router({
   /** Return current user profile */
@@ -88,5 +89,77 @@ export const usersRouter = router({
         }
         throw err;
       }
+    }),
+
+  // -------------------------------------------------------------------------
+  // GDPR: Account deletion pipeline
+  // -------------------------------------------------------------------------
+
+  /**
+   * Request account deletion.
+   * Sets deleted_at (soft delete — account is immediately hidden) and queues
+   * a hard-delete job to fire 30 days later.
+   */
+  requestDeletion: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      const userId = ctx.session.user.id;
+
+      // Soft-delete the user immediately
+      await ctx.db`
+        UPDATE users SET deleted_at = now() WHERE id = ${userId}
+      `;
+
+      // Queue hard-delete in 30 days
+      await ctx.db`
+        INSERT INTO user_deletion_queue (user_id, requested_at, execute_after)
+        VALUES (${userId}, now(), now() + INTERVAL '30 days')
+        ON CONFLICT (user_id) DO UPDATE
+          SET requested_at = EXCLUDED.requested_at,
+              execute_after = EXCLUDED.execute_after,
+              executed_at = NULL
+      `;
+
+      // Audit in every workspace the user belongs to
+      const workspaces = await ctx.db<{ workspace_id: string }[]>`
+        SELECT workspace_id FROM workspace_members WHERE user_id = ${userId}
+      `;
+      for (const ws of workspaces) {
+        await writeAuditEvent(ctx.db, {
+          workspaceId: ws.workspace_id,
+          actorUserId: userId,
+          eventType: AuditEvent.ACCOUNT_DELETION_REQUESTED,
+          targetType: "user",
+          targetId: userId,
+        });
+      }
+
+      return { scheduledFor: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() };
+    }),
+
+  /**
+   * Cancel a pending deletion request (within the 30-day window).
+   * Re-activates the account.
+   */
+  cancelDeletion: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      const userId = ctx.session.user.id;
+
+      // Verify there's a pending (not yet executed) deletion request
+      const [pending] = await ctx.db<{ id: string }[]>`
+        SELECT id FROM user_deletion_queue
+        WHERE user_id = ${userId} AND executed_at IS NULL
+      `;
+      if (!pending) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "No pending deletion request found",
+        });
+      }
+
+      // Restore the account
+      await ctx.db`UPDATE users SET deleted_at = NULL WHERE id = ${userId}`;
+      await ctx.db`DELETE FROM user_deletion_queue WHERE user_id = ${userId} AND executed_at IS NULL`;
+
+      return { ok: true };
     }),
 });

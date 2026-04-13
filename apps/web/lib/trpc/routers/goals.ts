@@ -1,6 +1,7 @@
 import { protectedProcedure, router } from "@/lib/trpc/init";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { writeAuditEvent, AuditEvent } from "@/lib/audit";
 
 const FREEMIUM_GOAL_LIMIT = 3;
 
@@ -167,7 +168,16 @@ export const goalsRouter = router({
         )
         RETURNING *
       `);
-      return rows[0]!;
+      const goal = rows[0]!;
+      await writeAuditEvent(ctx.db, {
+        workspaceId: ws.id,
+        actorUserId: userId,
+        eventType: AuditEvent.GOAL_CREATED,
+        targetType: "goal",
+        targetId: goal.id,
+        payload: { title: input.title, category: input.category },
+      });
+      return goal;
     }),
 
   /** Update goal metadata */

@@ -18,10 +18,28 @@ export default function WorkspaceLayout({
           Members
         </Link>
         <Link
+          href={`/workspace/${params.slug}/team`}
+          className="text-gray-600 hover:text-gray-900"
+        >
+          Team Dashboard
+        </Link>
+        <Link
           href={`/workspace/${params.slug}/goals`}
           className="text-gray-600 hover:text-gray-900"
         >
           Goals
+        </Link>
+        <Link
+          href={`/workspace/${params.slug}/assign`}
+          className="text-gray-600 hover:text-gray-900"
+        >
+          Assign Goals
+        </Link>
+        <Link
+          href={`/workspace/${params.slug}/departments`}
+          className="text-gray-600 hover:text-gray-900"
+        >
+          Departments
         </Link>
         <Link
           href={`/workspace/${params.slug}/settings`}

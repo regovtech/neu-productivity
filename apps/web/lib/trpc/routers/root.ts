@@ -5,6 +5,8 @@ import { checkInsRouter } from "./check-ins";
 import { workspacesRouter } from "./workspaces";
 import { invitesRouter } from "./invites";
 import { remindersRouter } from "./reminders";
+import { departmentsRouter } from "./departments";
+import { managerRouter } from "./manager";
 
 export const appRouter = router({
   users: usersRouter,
@@ -13,6 +15,8 @@ export const appRouter = router({
   workspaces: workspacesRouter,
   invites: invitesRouter,
   reminders: remindersRouter,
+  departments: departmentsRouter,
+  manager: managerRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -2,6 +2,7 @@ import { protectedProcedure, router } from "@/lib/trpc/init";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { GoalCadence, GoalRow } from "./goals";
+import { writeAuditEvent, AuditEvent } from "@/lib/audit";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -201,7 +202,16 @@ export const checkInsRouter = router({
         )
         RETURNING *
       `);
-      return rows[0]!;
+      const checkIn = rows[0]!;
+      await writeAuditEvent(ctx.db, {
+        workspaceId: goal.workspace_id,
+        actorUserId: userId,
+        eventType: AuditEvent.GOAL_CHECKED_IN,
+        targetType: "check_in",
+        targetId: checkIn.id,
+        payload: { goalId: input.goalId, value: input.value },
+      });
+      return checkIn;
     }),
 
   /**

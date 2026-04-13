@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { sendEmail, renderInviteEmail } from "@/lib/email/resend";
 import { env } from "@/lib/env";
+import { writeAuditEvent, AuditEvent } from "@/lib/audit";
 
 export interface InviteRow {
   id: string;
@@ -85,6 +86,15 @@ export const invitesRouter = router({
         acceptUrl,
       });
       await sendEmail({ to: input.email, ...tmpl });
+
+      await writeAuditEvent(ctx.db, {
+        workspaceId: input.workspaceId,
+        actorUserId: userId,
+        eventType: AuditEvent.MEMBER_INVITED,
+        targetType: "invite_token",
+        targetId: invite!.id,
+        payload: { email: input.email, role: input.role },
+      });
 
       return invite!;
     }),
@@ -179,6 +189,15 @@ export const invitesRouter = router({
       await ctx.db`
         UPDATE invite_tokens SET accepted_at = now() WHERE id = ${invite.id}
       `;
+
+      await writeAuditEvent(ctx.db, {
+        workspaceId: invite.workspace_id,
+        actorUserId: userId,
+        eventType: AuditEvent.MEMBER_JOINED,
+        targetType: "user",
+        targetId: userId,
+        payload: { role: invite.role },
+      });
 
       return { userId, workspaceId: invite.workspace_id };
     }),
