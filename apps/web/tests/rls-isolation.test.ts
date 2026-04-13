@@ -81,6 +81,8 @@ afterAll(async () => {
 describe("RLS: workspace isolation", () => {
   it("user A sees only their own workspace goals", async () => {
     const goals = await sql.begin(async (tx) => {
+      // Switch to app_user role so RLS policies are enforced (superusers bypass RLS by default)
+      await tx`SET LOCAL ROLE app_user`;
       await tx`SELECT set_config('app.current_user_id', ${userAId}, true)`;
       return tx<{ id: string }[]>`SELECT id FROM goals WHERE workspace_id IN (${wsAId}, ${wsBId})`;
     });
@@ -91,6 +93,7 @@ describe("RLS: workspace isolation", () => {
 
   it("user B sees only their own workspace goals", async () => {
     const goals = await sql.begin(async (tx) => {
+      await tx`SET LOCAL ROLE app_user`;
       await tx`SELECT set_config('app.current_user_id', ${userBId}, true)`;
       return tx<{ id: string }[]>`SELECT id FROM goals WHERE workspace_id IN (${wsAId}, ${wsBId})`;
     });
@@ -100,7 +103,7 @@ describe("RLS: workspace isolation", () => {
   });
 
   it("no cross-workspace data leaks via check_ins", async () => {
-    // Insert a check-in for A's goal as userA
+    // Insert a check-in for A's goal as userA (service-mode, no RLS role switch needed for insert)
     const [ci] = await sql<{ id: string }[]>`
       INSERT INTO check_ins (goal_id, user_id, workspace_id, value)
       VALUES (${goalAId}, ${userAId}, ${wsAId}, 5)
@@ -109,6 +112,7 @@ describe("RLS: workspace isolation", () => {
 
     // UserB should not see it
     const result = await sql.begin(async (tx) => {
+      await tx`SET LOCAL ROLE app_user`;
       await tx`SELECT set_config('app.current_user_id', ${userBId}, true)`;
       return tx<{ id: string }[]>`SELECT id FROM check_ins WHERE id = ${ci.id}`;
     });

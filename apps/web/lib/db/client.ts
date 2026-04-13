@@ -27,10 +27,13 @@ export const sql: postgres.Sql =
  */
 export async function withUserContext<T>(
   userId: string,
-  fn: (sql: postgres.Sql) => Promise<T>
+  fn: (sql: postgres.TransactionSql) => Promise<T>
 ): Promise<T> {
   return sql.begin(async (tx) => {
+    // Switch to app_user role so RLS policies are enforced.
+    // This is a no-op if the connection is already running as app_user.
+    await tx`SET LOCAL ROLE app_user`;
     await tx`SELECT set_config('app.current_user_id', ${userId}, true)`;
     return fn(tx);
-  });
+  }) as Promise<T>;
 }

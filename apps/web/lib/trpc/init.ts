@@ -25,7 +25,11 @@ const enforceAuth = t.middleware(({ ctx, next }) => {
   if (!ctx.session?.user?.id) {
     throw new TRPCError({ code: "UNAUTHORIZED" });
   }
-  return next({ ctx: { session: ctx.session } });
+  // Cast to narrow the session type for downstream procedures.
+  const session = ctx.session as NonNullable<typeof ctx.session> & {
+    user: NonNullable<(typeof ctx.session)["user"]> & { id: string };
+  };
+  return next({ ctx: { session } });
 });
 
 export const protectedProcedure = t.procedure.use(enforceAuth);

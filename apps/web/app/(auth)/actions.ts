@@ -24,8 +24,8 @@ export async function registerAction(formData: FormData) {
     return { error: "Registration failed. Please try again." };
   }
 
-  // Auto sign-in immediately after registration
-  await signIn("credentials", { email, password, redirectTo: "/dashboard" });
+  // Auto sign-in immediately after registration — go to onboarding wizard
+  await signIn("credentials", { email, password, redirectTo: "/onboarding" });
 }
 
 export async function loginAction(formData: FormData) {
