@@ -36,12 +36,13 @@ jobs:
       GOOGLE_CLIENT_ID: test-client-id
       GOOGLE_CLIENT_SECRET: test-client-secret
       RESEND_API_KEY: test-resend-key
+      CRON_SECRET: test-cron-secret-16ch
       NEXT_PUBLIC_APP_URL: http://localhost:3000
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v3
+      - uses: pnpm/action-setup@v4
         with:
           version: 9
 
@@ -54,7 +55,11 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Apply migrations
-        run: psql $DATABASE_URL -f packages/db/migrations/001_initial.sql
+        run: |
+          for f in packages/db/migrations/*.sql; do
+            echo "Applying $f"
+            psql $DATABASE_URL -f "$f"
+          done
 
       - name: Typecheck
         run: pnpm typecheck
@@ -64,3 +69,20 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Build (required for E2E)
+        run: pnpm --filter web build
+
+      - name: Install Playwright browsers
+        run: pnpm --filter web exec playwright install --with-deps chromium
+
+      - name: E2E smoke tests
+        run: pnpm --filter web test:e2e
+
+      - name: Upload E2E artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: apps/web/e2e-results/
+          retention-days: 7

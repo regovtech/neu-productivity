@@ -58,7 +58,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // Upsert user on OAuth sign-in, auto-create personal workspace
         await sql`
           INSERT INTO users (id, email, display_name, avatar_url)
-          VALUES (${user.id}, ${user.email}, ${user.name ?? null}, ${user.image ?? null})
+          VALUES (${user.id!}, ${user.email}, ${user.name ?? null}, ${user.image ?? null})
           ON CONFLICT (email) DO UPDATE
             SET display_name = EXCLUDED.display_name,
                 avatar_url   = EXCLUDED.avatar_url

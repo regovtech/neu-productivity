@@ -5,6 +5,8 @@ import { signIn } from "@/lib/auth/config";
 import { appRouter } from "@/lib/trpc/routers/root";
 import { sql } from "@/lib/db/client";
 import { TRPCError } from "@trpc/server";
+import { sendEmail, renderWelcomeEmail } from "@/lib/email/resend";
+import { env } from "@/lib/env";
 
 // Minimal server-side tRPC context (no session needed for public procedures)
 const serverCtx = { session: null, db: sql, withUserContext: null };
@@ -17,6 +19,12 @@ export async function registerAction(formData: FormData) {
   const caller = appRouter.createCaller(serverCtx);
   try {
     await caller.users.register({ email, password, displayName });
+    // Send welcome email (non-blocking — failure must not prevent registration)
+    const tmpl = renderWelcomeEmail({
+      displayName: displayName ?? email.split("@")[0]!,
+      appUrl: env.NEXT_PUBLIC_APP_URL,
+    });
+    sendEmail({ to: email, ...tmpl }).catch(() => {/* swallow — email is best-effort */});
   } catch (err) {
     if (err instanceof TRPCError) {
       return { error: err.message };
@@ -24,8 +32,8 @@ export async function registerAction(formData: FormData) {
     return { error: "Registration failed. Please try again." };
   }
 
-  // Auto sign-in immediately after registration
-  await signIn("credentials", { email, password, redirectTo: "/dashboard" });
+  // Auto sign-in immediately after registration — go to onboarding wizard
+  await signIn("credentials", { email, password, redirectTo: "/onboarding" });
 }
 
 export async function loginAction(formData: FormData) {
