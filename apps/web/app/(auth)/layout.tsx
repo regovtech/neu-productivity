@@ -12,6 +12,13 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-sm ring-1 ring-gray-200">
         {children}
       </div>
+      <p className="mt-6 text-xs text-gray-400">
+        By continuing, you agree to our{" "}
+        <Link href="/privacy" className="underline hover:text-gray-600">
+          Privacy Policy
+        </Link>
+        .
+      </p>
     </div>
   );
 }
