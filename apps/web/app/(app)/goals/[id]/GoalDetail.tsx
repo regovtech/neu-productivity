@@ -6,6 +6,8 @@ import { trpc } from "@/lib/trpc/client";
 import { ProgressRing } from "@/components/goals/ProgressRing";
 import { StreakBadge } from "@/components/goals/StreakBadge";
 import { GoalStatusActions } from "@/components/goals/GoalStatusActions";
+import { ProgressChart } from "@/components/goals/ProgressChart";
+import { StreakCalendar } from "@/components/goals/StreakCalendar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -175,6 +177,29 @@ export function GoalDetail({ goalId }: { goalId: string }) {
         <h2 className="mb-3 font-semibold text-gray-900">Goal actions</h2>
         <GoalStatusActions goalId={goalId} currentStatus={goal.status} />
       </section>
+
+      {/* Progress chart */}
+      {!checkInsLoading && checkIns && checkIns.length > 0 && (
+        <section className="rounded-xl bg-white p-5 ring-1 ring-gray-200">
+          <h2 className="mb-4 font-semibold text-gray-900">Progress over time</h2>
+          <ProgressChart
+            checkIns={checkIns}
+            numericTarget={Number(goal.numeric_target)}
+            targetDate={goal.target_date}
+          />
+        </section>
+      )}
+
+      {/* Streak calendar */}
+      {!checkInsLoading && checkIns && (
+        <section className="rounded-xl bg-white p-5 ring-1 ring-gray-200">
+          <h2 className="mb-4 font-semibold text-gray-900">Check-in calendar</h2>
+          <StreakCalendar
+            checkIns={checkIns}
+            cadence={goal.cadence as "daily" | "weekly"}
+          />
+        </section>
+      )}
 
       {/* Check-in history */}
       <section>
