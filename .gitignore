@@ -28,3 +28,6 @@ Thumbs.db
 # Playwright
 apps/web/e2e-results/
 apps/web/playwright-report/
+
+# TypeScript
+*.tsbuildinfo
