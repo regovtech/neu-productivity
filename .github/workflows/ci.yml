@@ -55,7 +55,11 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Apply migrations
-        run: psql $DATABASE_URL -f packages/db/migrations/001_initial.sql
+        run: |
+          for f in packages/db/migrations/*.sql; do
+            echo "Applying $f"
+            psql $DATABASE_URL -f "$f"
+          done
 
       - name: Typecheck
         run: pnpm typecheck
